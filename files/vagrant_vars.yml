@@ -1,0 +1,72 @@
+# Data to test, in groupvars
+---
+# Common vars just calling out all the things I can think of:
+ssh_user: "user"
+ssh_home: "/home/user/"
+ssh_config: "~/.ssh/config"
+projects_root: "~/projects/"
+ssh_pub: "~/.ssh/id_rsa.pub"
+ssh_priv: "~/.ssh/id_rsa"
+
+
+box_list:
+  - 'centos/7'
+  - 'centos/8'
+  - 'ubuntu/bionic64'
+
+# These vars get called by the vagrant file
+# The file ingests all this data
+
+# Host vars - but not in hostvars
+# This format works great!!
+# Vagrant reads in the dict of list, but it doesn't know about the other vars
+# so for now you have to fully specify the box data, no shortcuts.
+# probably can do this inside of the vagrant file, as we suck all that info in
+
+# Bootstrap part passes the name into the play via vagrant
+# but is does mean you can call differnet bootstraps for different hosts
+
+# Remeber the state flag!!!!!!
+# If you want to clean up the sshconfig, inventory file, and hosts file
+# you can add the abscent flag before you destroy the vm
+
+host_list:
+  - name: xxx
+    provider: virtualbox
+    group: xxx
+    ip: "1.1.1.xx"
+    vm_name: dev1
+    mem: 512
+    cpus: 1
+    box: 'centos/7'
+    box_url: 'https://vagrantcloud.com/centos/boxes/7'
+    bootstrap: 'bootstrap.yml'
+    type: "linux"
+    state: "present"
+
+  - name: xxx
+    provider: virtualbox
+    group: xxx
+    ip: "1.1.1.xx"
+    vm_name: xxx
+    mem: 512
+    cpus: 1
+    box: 'centos/7'
+    box_url: 'https://vagrantcloud.com/centos/boxes/7'
+    bootstrap: 'bootstrap.yml'
+    type: "linux"
+    state: "present"
+
+  - name: xxx
+    provider: virtualbox
+    group: xxx
+    ip: "1.1.1.xx"
+    vm_name: xxx
+    mem: 512
+    cpus: 1
+    box: 'centos/7'
+    box_url: 'https://vagrantcloud.com/centos/boxes/7'
+    bootstrap: 'bootstrap.yml'
+    type: "linux"
+    state: "present"
+
