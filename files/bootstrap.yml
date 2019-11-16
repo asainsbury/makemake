@@ -9,6 +9,11 @@
   # Using all the data from all.yml
 
   tasks:
+
+    - name: Include vars of stuff.yaml into the 'stuff' variable (2.2).
+      include_vars:
+        file: stuff.yaml
+
     - name: Add a special package, only on Centos or RHEL https://github.com/bayandin/webpagetest-private/issues/1
       package:
         name: libselinux-python
@@ -86,8 +91,6 @@
         user: "{{ssh_user}}"
         state: present
         key: "{{ lookup('file', '{{ssh_pub}}') }}"
-
-
 
   handlers:
     - name: restart_ssh

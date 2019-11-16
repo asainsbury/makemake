@@ -21,6 +21,7 @@
     var7: "{{ type      | default(centos7) }}"
 
     project: "{{ var3 }}/{{ var4 }}"
+    ssh_config: "~/.ssh/config"
 
     ########################################################
     # Add more boxes here as and when required
@@ -157,13 +158,22 @@
       
       tags: ['vars', 'jinja']
 
+########################################################
+# Jinja2 template to make the vagrant vars
+########################################################
+    - name: Template host inventory {{project}}/ansible/inventory/hosts
+      template:
+        src: files/make_inv.j2
+        dest: "{{project}}/ansible/inventory/hosts"
+      
+      tags: ['hosts', 'jinja']
 
 ########################################################
 # Block in File for some all.yml vars
 ########################################################
-    - name: Make some group_vars {{project}}/ansible/group_vars/all.yml
+    - name: Make some group_vars {{project}}/vagrant/stuff.yml
       blockinfile:
-        path: "{{project}}/ansible/group_vars/all.yml"
+        path: "{{project}}/vagrant/stuff.yml"
         state: present
         create: yes
         block: |
@@ -179,52 +189,40 @@
 
 
 
-    ########################################################
-    # - name: Check that the host file exists
-    #   stat:
-    #     path: "{{ host_file }}"
-    #   register: stat_result
-    #   tags: host_file
+    - name: Include vars of stuff.yaml into the 'stuff'
+      include_vars: 
+        file: "{{ item }}"
 
-    # - name: Create the file, if it doesnt exist already
-    #   file:
-    #     path: "{{ host_file }}"
-    #     state: touch
-    #   when: stat_result.stat.exists == False  
-    #   tags: host_file
- 
+      with_items:          
+        - "{{project}}/vagrant/host_list.yml"
+        - "{{project}}/vagrant/stuff.yml"
 
-    # - name: Add hosts for vagrant into sshconfg
-    #   blockinfile:
-    #     path: "{{ssh_config}}"
-    #     marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.name }}"
+      tags: ['vars', 'ssh']
+
+
+    # not working only adding last item 
+    # Need another template to make the file
+    # Then read that back into a block
+    - name: Add hosts for vagrant into sshconfg
+      blockinfile:
+        path: "{{ssh_config}}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.name }}"
          
-    #     block: | 
-    #       Host {{item.name}} *.test.local
-    #         hostname {{item.ip}}
-    #         StrictHostKeyChecking no
-    #         UserKnownHostsFile=/dev/null
-    #         User {{ssh_user}}
-    #         LogLevel ERROR  
+        block: | 
+          Host {{item.vm_name}} *.test.local
+            hostname {{item.ip}}
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+            User {{ssh_user}}
+            LogLevel ERROR  
         
-    #     state: "{{item.state}}"
+        state: "{{item.state}}"
 
-    #   with_items:
-    #     - "{{host_list}}"
+      with_items:
+        - "{{host_list}}"
 
-    #   tags: sshconfg
+      tags: ['ssh']
   
-
-    # - name: Add the Vagrant Boxes
-    #   shell: 'vagrant box add {{item}} --insecure --provider virtualbox'
-    #   register: result
-
-    #   with_items:
-    #     - "{{box_list}}"
-
-    #   failed_when: "'A name is required' in result.stderr"
-    #   when: update
-    #   tags: box_add
 
 
 
