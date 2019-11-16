@@ -198,26 +198,16 @@
       tags: ['vars', 'group_vars']
 
 
-    - name: Include vars of stuff.yaml into the 'stuff'
-      include_vars: 
-        file: "{{ item }}"
-
-      with_items:          
-        - "{{project}}/vagrant/host_list.yml"
-        - "{{project}}/vagrant/stuff.yml"
-
-      tags: ['vars', 'ssh']
-
-
+    # multi line marker adds a quote to the data
+    # and then kill a git push via ssh
     - name: Add hosts for vagrant into sshconfg
       blockinfile:
-        path: "{{ssh_config}}"
+        path: ~/.ssh/config
         marker: "# {mark} ANSIBLE MANAGED BLOCK "
+        block: "{{ lookup( 'file' , '{{project}}/vagrant/ssh_config'  ) }}"
          
-        block: | 
-          "{{ lookup( 'file' , '{{project}}/vagrant/ssh_config' ) }}"
-    
       tags: ['ssh_lookup']
+    
   
 
 
