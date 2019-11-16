@@ -169,6 +169,16 @@
       tags: ['hosts', 'jinja']
 
 ########################################################
+# Jinja2 template to make the ssh vars
+########################################################
+    - name: Template ssh config {{project}}/vagrant/ssh_config
+      template:
+        src: files/make_ssh_config.j2
+        dest: "{{project}}/vagrant/ssh_config"
+      
+      tags: ['ssh_config', 'jinja']
+
+########################################################
 # Block in File for some all.yml vars
 ########################################################
     - name: Make some group_vars {{project}}/vagrant/stuff.yml
@@ -188,7 +198,6 @@
       tags: ['vars', 'group_vars']
 
 
-
     - name: Include vars of stuff.yaml into the 'stuff'
       include_vars: 
         file: "{{ item }}"
@@ -200,28 +209,15 @@
       tags: ['vars', 'ssh']
 
 
-    # not working only adding last item 
-    # Need another template to make the file
-    # Then read that back into a block
     - name: Add hosts for vagrant into sshconfg
       blockinfile:
         path: "{{ssh_config}}"
-        marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.name }}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK "
          
         block: | 
-          Host {{item.vm_name}} *.test.local
-            hostname {{item.ip}}
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null
-            User {{ssh_user}}
-            LogLevel ERROR  
-        
-        state: "{{item.state}}"
-
-      with_items:
-        - "{{host_list}}"
-
-      tags: ['ssh']
+          "{{ lookup( 'file' , '{{project}}/vagrant/ssh_config' ) }}"
+    
+      tags: ['ssh_lookup']
   
 
 
