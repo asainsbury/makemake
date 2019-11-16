@@ -19,9 +19,6 @@
     var5: "{{ files     | default(False)}}"
     var6: "{{ folders   | default(False)}}"
     var7: "{{ type      | default(centos7) }}"
-    
-    var8: "{{ var2[:-1]}}"
-    var9: "{ {var2 | ipaddr('host/prefix'') }}"
 
     project: "{{ var3 }}/{{ var4 }}"
 
@@ -41,6 +38,7 @@
       set_fact:
         ansible_python_interpreter: ~/.pyenv/shims/python
       when: ansible_distribution == 'MacOSX'
+      
       tags: ['family']
 
 
@@ -156,13 +154,14 @@
       template:
         src: files/make_vars.j2
         dest: "{{project}}/vagrant/host_list.yml"
+      
       tags: ['vars', 'jinja']
 
 
 ########################################################
 # Block in File for some all.yml vars
 ########################################################
-    - name: Make some group_vars
+    - name: Make some group_vars {{project}}/ansible/group_vars/all.yml
       blockinfile:
         path: "{{project}}/ansible/group_vars/all.yml"
         state: present
@@ -175,6 +174,7 @@
           projects_root: "{{ var3 }}"
           ssh_pub: "~/.ssh/id_rsa.pub"
           ssh_priv: "~/.ssh/id_rsa" 
+      
       tags: ['vars', 'group_vars']
 
 
