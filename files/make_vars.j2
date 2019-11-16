@@ -1,21 +1,13 @@
 ---
 # Create by a Jinja2 template#
 
-ssh_user: "user"
-ssh_home: "/home/user/"
-ssh_config: "~/.ssh/config"
-projects_root: "{{ var3 }}"
-ssh_pub: "~/.ssh/id_rsa.pub"
-ssh_priv: "~/.ssh/id_rsa"
-
 host_list:
 {% set number = var1 | int -%}
 {% for n in range( number ) %}
-
   - name: 
     provider: virtualbox
     group: {{var4}}
-    ip: "{{var2}}"
+    ip: "{{var8}}{{n}}"
     vm_name: {{var4}}{{n +1}}
     mem: 512
     cpus: 1

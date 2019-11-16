@@ -10,8 +10,8 @@
 VAGRANTFILE_API_VERSION = '2'
 # Bit of error checking around the external data source:
 require 'yaml'
-if File.file?('group_vars/all.yml')
-  data = YAML.load_file('group_vars/all.yml')
+if File.file?('host_list.yml')
+  data = YAML.load_file('host_list.yml')
 else
   raise "Configuration file does not exist."
 end
