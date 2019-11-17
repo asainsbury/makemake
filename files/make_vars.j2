@@ -6,7 +6,7 @@
 host_list:
 {% set number = var1 | int -%}
 {% for n in range( number ) %}
-  - name: 
+  - name: {{var4}}{{n +1}}
     provider: virtualbox
     group: {{var4}}
     ip: {{ var2 | ipaddr('address') | ipmath(n) }}
