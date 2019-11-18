@@ -4,7 +4,7 @@
 
 {% set number = var1 | int -%}
 {% for n in range( number ) %}
-Host {{var4}}{{n +1}} *.test.local
+Host '{{var4}}{{n +1}}' *.test.local
   hostname {{ var2 | ipaddr('address') | ipmath(n) }}
   StrictHostKeyChecking no
   UserKnownHostsFile=/dev/null

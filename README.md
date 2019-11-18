@@ -30,7 +30,7 @@ After lots of research (Google) I've managed to come up with a compact and bijou
 
 This allows you to be able to ssh into all the VM's and between all VM's for fast development.
 
-Run the playbook `ansible-playbook vagrant-maker.yml`
+Run the playbook ` ansible-playbook make_make.yml -e "title=myCool start_ip='1.1.1.20/24'"  -v`
 
 <div align="right">
     <b><a href="#top">↥ back to top</a></b>
