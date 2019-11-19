@@ -1,0 +1,23 @@
+---
+# Create by a Jinja2 template#
+# https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters_ipaddr.html#basic-tests
+# Was a heap of fun making this template!
+
+host_list:
+{% set number = var1 | int -%}
+{% for n in range( number ) %}
+  - name: {{var4}}{{n +1}}
+    provider: virtualbox
+    group: {{var4}}
+    ip: {{ var2 | ipaddr('address') | ipmath(n) }}
+    vm_name: {{var4}}{{n +1}}
+    mem: 512
+    cpus: 1
+    box: "{{var7[0]}}"
+    box_url: "{{var7[1]}}"
+    bootstrap: "bootstrap.yml"
+    type: "linux"
+    state: "present"
+
+{% endfor %}
+

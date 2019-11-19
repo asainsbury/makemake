@@ -1,0 +1,220 @@
+---
+- hosts: localhost
+  gather_facts: True
+  become: false
+  
+  vars:
+
+    debug: true
+
+    # Run the playbook ` ansible-playbook make_make.yml -e "title=myCool start_ip=1.1.1.20/24"  -v
+    # It is important not to include any other things around the title, otherwise it kills the paths
+
+    ########################################################
+    # Vars with filters and default values
+    # From Extra vars on the cli 
+    #   - MUST pass in a project name 
+    ########################################################
+    var1: "{{ boxes     | default(3)  | int }}" 
+    var2: "{{ start_ip  | default('1.1.1.10/24')   | ipaddr('host/prefix')}}"
+    var3: "{{ root      | default('~/projects/scripts') }}"
+    var4: "{{ title     | lower   | regex_replace(' ', '') }}"
+    var5: "{{ files     | default(False)}}"
+    var6: "{{ folders   | default(False)}}"
+    var7: "{{ type      | default(centos7) }}"
+
+    project: "{{ var3 }}/{{ var4 }}"
+    ssh_config: "~/.ssh/config"
+
+    ########################################################
+    # Add more boxes here as and when required
+    ########################################################
+    centos7:
+      - 'centos/7'
+      - 'https://vagrantcloud.com/centos/boxes/7'
+    
+
+########################################################
+# Interpreter fix up for the MAC
+########################################################
+  tasks:
+    - name: Set the virtualenv python shim on MacOSX
+      set_fact:
+        ansible_python_interpreter: ~/.pyenv/shims/python
+      when: ansible_distribution == 'MacOSX'
+      
+      tags: ['family']
+
+
+########################################################
+# Input Vars Checking
+# Must be defined before we continue
+# Playbook exits with undef if not present
+########################################################
+
+    - name: Make sure we got an vaild IPv4 Addr and prefix {{var2}}
+      debug:
+        msg: "You included this: {{var2}}"       
+      failed_when: var2 == False or var2 is not defined or not var2
+
+      tags: ['tests', 'IPv4']
+
+    - name: Make sure we got an input for TITLE
+      debug:
+        msg: "You included this: {{var4}}"
+
+      tags: ['tests', 'title']
+
+
+    - name: Debug the vars which we need on input
+      debug:
+        msg: "BOXES:{{var1 }}; START:{{var2}}; ROOT:{{var3}}; TITLE:{{var4}} PROJECT: {{project}}"
+      when: debug
+
+      tags: ['tests', 'output']
+
+
+    - name: Debug the Control Boolean
+      debug:
+        msg: "Copy Files:{{var5 }}; Create Folders:{{var6}}"
+      when: debug
+
+      tags: ['tests', 'inputs']
+
+########################################################
+# Create Path Structure
+########################################################
+
+    - name: Create the project directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - "{{project}}"
+        - "{{project}}/input"
+        - "{{project}}/output"
+        - "{{project}}/report"
+        - "{{project}}/ansible"
+        - "{{project}}/ansible/roles"
+        - "{{project}}/ansible/group_vars"
+        - "{{project}}/ansible/host_vars"
+        - "{{project}}/ansible/inventory"
+        - "{{project}}/vagrant"
+        - "{{project}}/python"
+        - "{{project}}/python/log"
+        - "{{project}}/log"
+
+      tags: ['folders']
+
+
+########################################################
+# Copy over the files
+########################################################
+    - name: Touch a bunch of files to make sure they exists
+      file:
+        path: "{{ item }}"
+        state: touch
+      with_items:
+        - "{{project}}/ansible/inventory/hosts"
+        - "{{project}}/ansible/group_vars/all.yml"
+        - "{{project}}/README.md"
+        - "{{project}}/.gitignore"
+        - "{{project}}/python/requirements.txt"
+        - "{{project}}/ansible/README.md"
+        - "{{project}}/python/README.md"
+        - "{{project}}/vagrant/README.md"
+        - "{{project}}/vagrant/host_list.yml"
+
+      tags: ['touch', 'never']
+
+
+    - name: Copy over the Vagrant files
+      copy:
+        src: "{{ item }}"
+        dest: "{{project}}/vagrant"  
+      with_items:
+        - files/Vagrantfile
+        - files/bootstrap.yml
+        - files/id_rsa
+        - files/id_rsa.pub
+
+      tags: ['files', 'vagrant']
+
+
+    - name: Copy over the Ansible files
+      copy:
+        src: "{{ item }}"
+        dest: "{{project}}/ansible"  
+      with_items:
+        - files/ansible.cfg
+
+      tags: ['files', 'python']     
+
+
+########################################################
+# Jinja2 template to make the vagrant vars
+########################################################
+    - name: Template a file to {{project}}/vagrant/host_list.yml
+      template: src=files/make_vars.j2 dest={{project}}/vagrant/host_list.yml
+      
+      tags: ['vars', 'jinja']
+
+########################################################
+# Jinja2 template to make the vagrant vars
+########################################################
+    - name: Template host inventory {{project}}/ansible/inventory/hosts
+      template:
+        src: files/make_inv.j2
+        dest: "{{project}}/ansible/inventory/hosts"
+      
+      tags: ['hosts', 'jinja']
+
+########################################################
+# Jinja2 template to make the ssh vars
+########################################################
+    - name: Template ssh config {{project}}/vagrant/ssh_config
+      template:
+        src: files/make_ssh_config.j2
+        dest: "{{project}}/vagrant/ssh_config"
+      
+      tags: ['ssh_config', 'jinja']
+
+########################################################
+# Block in File for some all.yml vars
+########################################################
+    - name: Make some group_vars {{project}}/vagrant/stuff.yml
+      blockinfile:
+        path: "{{project}}/vagrant/stuff.yml"
+        state: present
+        create: yes
+        block: |
+          ---
+          ssh_user: "user"
+          ssh_home: "/home/user/"
+          ssh_config: "~/.ssh/config"
+          projects_root: "{{ var3 }}"
+          ssh_pub: "~/.ssh/id_rsa.pub"
+          ssh_priv: "~/.ssh/id_rsa" 
+      
+      tags: ['vars', 'group_vars']
+
+
+    # multi line marker adds a quote to the data
+    # and then kill a git push via ssh
+    - name: Add hosts for vagrant into sshconfg
+      blockinfile:
+        path: ~/.ssh/config
+        marker: "# {mark} ANSIBLE MANAGED BLOCK "
+        block: "{{ lookup( 'file' , '{{project}}/vagrant/ssh_config'  ) }}"
+         
+      tags: ['ssh_lookup']
+    
+########################################################
+# Run final sanity checks
+######################################################## 
+    - name: Change the working directory to and test the vagrant file
+      command: vagrant validate
+      args:
+        chdir: "{{project}}/vagrant/"
+      tags: ['validate']
+
