@@ -12,7 +12,7 @@
 
     - name: Include vars of stuff.yaml into the 'stuff' variable (2.2).
       include_vars:
-        file: stuff.yaml
+        file: stuff.yml
 
     - name: Add a special package, only on Centos or RHEL https://github.com/bayandin/webpagetest-private/issues/1
       package:

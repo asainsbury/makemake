@@ -1,525 +1,133 @@
-# vagrant-maker
-Ansible playbook to create a Vagrantfile and modify your .ssh/config file and also generate your hosts inventory file, all based on a set of data in groupvars.
+# [MakeMAke](https://solarsystem.nasa.gov/planets/dwarf-planets/makemake/in-depth/)
+Ansible playbook to create a project folder structure for rapid development.
 
-- [vagrant-maker](#vagrant-maker)
-  * [Introduction](#introduction)
-- [The vagrant-maker playbook](#the-vagrant-maker-playbook)
-- [Bootstrapping the Linux hosts](#bootstrapping-the-linux-hosts)
-  * [The Group Vars](#the-group-vars)
-    + [Host list](#host-list)
-    + [SSH config](#ssh-config)
-    + [Hosts inventory](#hosts-inventory)
-  * [Vagrantfile](#vagrantfile)
-    + [Importing the yaml data structure:](#importing-the-yaml-data-structure-)
-    + [Networking function:](#networking-function-)
-    + [Vagrant host loop](#vagrant-host-loop)
-    + [Vagrant configure boxes](#vagrant-configure-boxes)
-    + [Vagrant set memory and cpu's](#vagrant-set-memory-and-cpu-s)
-    + [Cisco conditional loop](#cisco-conditional-loop)
-    + [Ansible provisioning](#ansible-provisioning)
-      - [And finally...](#and-finally)
-  * [References](#references)
-
-<small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
-
+This is a continuation of the work which can be found in vagrant-maker, but with some bigger bells and better whistles.
 
 ## Introduction
-This code is a way for me to streamline the building of Vagrant hosts, on my Mac.
 
-After lots of research (Google) I've managed to come up with a compact and bijou Vagrantfile, which reads in a templated set of data (in YAML obviously!) and spins up the hosts when you vagrant up.  To add to the smoothness of developing with Ansible, I also create some code in .ssh/config to alias the hostname, then generate the inventory file. Another play takes care of provisioning the host with ssh keys and adds a user.
+I found myself constantly remaking the same folder structure over and over again, and then copying over files from lots of different places each time I wanted to make a new project.  I was also only running vagrant out of the one location, so I thought it would be better to make a playbook which is capable of replicating all my favorite structures and in a repeatable fashion.
 
-This allows you to be able to ssh into all the VM's and between all VM's for fast development.
+## Aims
 
-Run the playbook ` ansible-playbook make_make.yml -e "title=myCool start_ip='1.1.1.20/24'"  -v`
+- Run the playbook and make a standard folder structure.
+- From extra vars input do the following:
+  - Make a vars file for Vagrant, specific to a project.
+  - Make an inventory file for Ansible.
+  - Update the local SSH Config file, to make it easy to shell into the VM's.
+- Add default vars if nothing is supplied.
+- Use some validation on the inputs, and exit if crap is found.
+- Run Vagrant validate at the end to test it all worked.
+- Use the Vagrant provisioning to create the VM's ready to be used in a new project.
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+## Assumptions
 
-# The vagrant-maker playbook 
-It was surprisingly simple to generate the files, and it uses just 2 modules 
-- 'blockinfile' for the ssh
-- 'lineinfile' for the inventory file
+- You know a bit about:
+  - Vagrant.
+  - Ansible.
+  - Ruby.
+  - YAML.
+  - Python.
+  - Python virtual environments
+  - Pip.
 
-Both tasks have a state of presence, so you can remove the config by simply changing the state field in the groupvars.
+## Improvements
 
-```
----
-- hosts: localhost
-  gather_facts: false
+It would be nice to do the following:
 
-  vars:
-    update: true
+- Install a new virtual environment into the project directory.
+- Upgrade pip to the latest version.
+- Install the latest versions of a bunch of my favorite modules.
+- Break it up into roles, but I find a simple playbook, sometimes is the best approach.
 
-  tasks:      
-    - name: Check inventory paths exist and create if not
-      file:
-        path: "{{ host_path }}"
-        state: directory
+## Dependencies
 
-      tags:
-        - host_path
+You need to have a few pip modules installed, otherwise the filters for working with IP addresses will fail.
 
-    - name: Check that the host file exists
-      stat:
-        path: "{{ host_file }}"
-      register: stat_result
-      tags: host_file
+- Netaddr.
+- Probably more..
 
-    - name: Create the file, if it doesn't exist already
-      file:
-        path: "{{ host_file }}"
-        state: touch
-      when: stat_result.stat.exists == False  
-      tags: host_file
- 
+### Do's and Don'ts
 
-    - name: Add hosts for vagrant into ssh config
-      blockinfile:
-        path: "{{ssh_config}}"
-        marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.name }}"
-         
-        block: | 
-          Host {{item.name}} *.test.local
-            hostname {{item.ip}}
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null
-            User {{ssh_user}}
-            LogLevel ERROR  
-        
-        state: "{{item.state}}"
+- Don't quote the inputs when making a folder, or path.
+- Don't include spaces in the title, spaces are bad.
+- Do include a prefix with the starting IPAddr.
 
-      with_items:
-        - "{{host_list}}"
+## Workflow
 
-      tags: sshconfg
-  
+You simply have to call the playbook with the following extra vars:
 
-    - name: Add the Vagrant Boxes
-      shell: 'vagrant box add {{item}} --insecure --provider virtualbox'
-      register: result
-
-      with_items:
-        - "{{box_list}}"
-
-      failed_when: "'A name is required' in result.stderr"
-      when: update
-      tags: box_add
-```
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-# Bootstrapping the Linux hosts
-Post vagrant up, calls this playbook, which sets up the environment for simple ssh access. This have been tested on both Ubuntu and Centos, as listed in the groupvars section.
-
-```
----
-- hosts: all
-  gather_facts: yes
-  become: true
-  
-  # Vagrant provision runs this file, so you don't actually need an inventory
-  # it does that for you.
-  # Basically we setup a bunch of environment stuff so we can ssh into the host
-  # Using all the data from all.yml
-
-  tasks:
-    - name: Add a special package, only on Centos or RHEL https://github.com/bayandin/webpagetest-private/issues/1
-      package:
-        name: libselinux-python
-        state: present
-      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
-
-    - name: Create User
-      user:
-        name: "{{ssh_user}}"
-        password: "{{ 'password' | password_hash('sha512') }}"
-        shell: /bin/bash
-        append: yes
-        generate_ssh_key: yes
-        ssh_key_bits: 1024
-        ssh_key_file: .ssh/id_rsa
-
-    - name: Add a special package, only on Centos or RHEL https://github.com/bayandin/webpagetest-private/issues/1
-      package:
-        name: libselinux-python
-        state: present
-      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
-
-    - name: Add user to sudoers
-      lineinfile: dest=/etc/sudoers
-                  regexp="{{ssh_user}}"
-                  line='"{{ssh_user}}"  ALL=(ALL) NOPASSWD:ALL'
-                  state=present
-
-    - name: Disallow password authentication
-      lineinfile: dest=/etc/ssh/sshd_config
-                  regexp="^PasswordAuthentication"
-                  line="PasswordAuthentication no"
-                  state=present
-      notify: restart_ssh
-
-    - name: Disallow root SSH access
-      lineinfile: dest=/etc/ssh/sshd_config
-                  regexp="^PermitRootLogin"
-                  line="PermitRootLogin no"
-                  state=present
-      notify: restart_ssh
-
-    - name: Turn off selinux, only on Centos or RHEL
-      selinux:
-        policy: targeted
-        state: permissive
-      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
-
-    - name: Copy over the ssh config file
-      copy:
-        src: "{{ssh_config}}"
-        dest: /home/user/.ssh/config
-        owner: "{{ssh_user}}"
-        mode: 0600
-   
-    # Dependencies: 
-    # Make some dummy keys on one of the VM's 
-    # and place them in the root of this play
-    - name: Copy over the dummy pub ssh keys to each node
-      copy:
-        src: id_rsa.pub
-        dest: "{{ssh_home}}.ssh/id_rsa.pub"
-        owner: "{{ssh_user}}"
-        mode: 0600
-
-    - name: Copy over the dummy priv ssh keys to each node
-      copy:
-        src: id_rsa
-        dest: "{{ssh_home}}.ssh/id_rsa"
-        owner: "{{ssh_user}}"
-        mode: 0600
-
-    - name: Set authorized key from file
-      authorized_key:
-        user: "{{ssh_user}}"
-        state: present
-        key: "{{ lookup('file', 'id_rsa.pub') }}"
-
-    - name: Set authorized key from file from the control machine
-      authorized_key:
-        user: "{{ssh_user}}"
-        state: present
-        key: "{{ lookup('file', '{{ssh_pub}}') }}"
-
-
-
-  handlers:
-    - name: restart_ssh
-      systemd:
-        name: sshd
-        state: restarted
-```
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-## The Group Vars
-It all starts at the beginning, which is a group vars files with paths and all sorts of other stuff. Look at this file for all the variables.
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-### Host list
-This is the list we are  going to use to generate ssh config and hosts inventory, but also is used by the vagrant file to build the virtual machines.
-
-```
-host_list:
-  - name: dev1
-    provider: virtualbox
-    group: dev
-    ip: "1.1.1.10"
-    vm_name: dev1
-    mem: 512
-    cpus: 1
-    box: 'centos/7'
-    box_url: 'https://vagrantcloud.com/centos/boxes/7'
-    bootstrap: 'bootstrap.yml'
-    type: "linux"
-    state: "present"
-
-  - name: dev2
-    provider: virtualbox
-    group: dev
-    ip: "1.1.1.11"
-    vm_name: dev2
-    mem: 512
-    cpus: 1
-    box: 'centos/7'
-    box_url: 'https://vagrantcloud.com/centos/boxes/7'
-    bootstrap: 'bootstrap.yml'
-    type: "linux"
-    state: "present"
-
-  - name: dev3
-    provider: virtualbox
-    group: dev
-    ip: "1.1.1.12"
-    vm_name: dev3
-    mem: 512
-    cpus: 1
-    box: 'centos/7'
-    box_url: 'https://vagrantcloud.com/centos/boxes/7'
-    bootstrap: 'bootstrap.yml'
-    type: "linux"
-    state: "present"
+```bash
+ansible-playbook make_make.yml -e "title=myCool start_ip=1.1.1.20/24"  -v
 ```
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+You have to supply a title, as a minimum otherwise the playbook will fail. The rest of the vars can default into the data in the playbook, but it is probably worth putting in a new start IP range.
 
-### SSH config
-The playbook iterates over the list and generates blocks of text for the ssh config:
+The playbook creates the following folder structure, and creates files specific for the project:
 
-```
-Host *
-    ServerAliveInterval 120
-# BEGIN ANSIBLE MANAGED BLOCK dev1
-Host dev1 *.test.local
-  hostname 1.1.1.10
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-  User user
-  LogLevel ERROR
-# END ANSIBLE MANAGED BLOCK dev1
-# BEGIN ANSIBLE MANAGED BLOCK dev2
-Host dev2 *.test.local
-  hostname 1.1.1.11
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-  User user
-  LogLevel ERROR
-# END ANSIBLE MANAGED BLOCK dev2
-# BEGIN ANSIBLE MANAGED BLOCK dev3
-Host dev3 *.test.local
-  hostname 1.1.1.12
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-  User user
-  LogLevel ERROR
-# END ANSIBLE MANAGED BLOCK dev3
+```bash
+(python372)  ~/projects/scripts/mycool tree
+.
+├── ansible
+│   ├── ansible.cfg
+│   ├── group_vars
+│   ├── host_vars
+│   ├── inventory
+│   │   └── hosts
+│   └── roles
+├── input
+├── log
+├── output
+├── python
+│   └── log
+├── report
+└── vagrant
+    ├── Vagrantfile
+    ├── bootstrap.yml
+    ├── host_list.yml
+    ├── id_rsa
+    ├── id_rsa.pub
+    ├── ssh_config
+    └── stuff.yml
+
+12 directories, 9 files
 ```
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+### Ansible
 
-### Hosts inventory
-I decided to chop this bit out as it wasn't working as expected.
+- Ansible hosts file for the nodes we created.
+- Ansible.cfg file points to the host file.
 
-```
-[dev]
-dev1 ansible_ssh_host=1.1.1.10
-dev2 ansible_ssh_host=1.1.1.11
-dev3 ansible_ssh_host=1.1.1.12
-```
+### Vagrant
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+- Makes the host_list.yml variables specific to the input IPv4Addr.
+- Stuff.yml is created for the bootstrap process.
+- Public and private keys are copied over and are used for key access to the servers.
 
-## Vagrantfile
-This is where all the fun begins.
+### Local SSHCONFIG
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+- For easy access into the new servers, better than using hosts file which needs sudo access.
+- Ease of access without any passwords.
 
-### Importing the yaml data structure:
-This is where we set the data for the vagrantfile to source from, and inside the code we have a conditional to check if the file exists or we exit:
+### Other folders
 
-```
-# -*- mode: ruby -*-
-# vi: set ft=ruby 
+- Just sets up the other folders without any content.
 
-VAGRANTFILE_API_VERSION = '2'
-# Bit of error checking around the external data source:
-require 'yaml'
-if File.file?('group_vars/all.yml')
-  data = YAML.load_file('group_vars/all.yml')
-else
-  raise "Configuration file does not exist."
-end
+## Final Tests
 
+The playbook validates the vagrant file, at the end of the workflow, just to make sure everything is good before moving onto provisioning the VM's. 
+
+```bash
+cd {{projectname}} && vagrant validate 
 ```
 
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
+# Provisioning Process
 
-### Networking function:
-Here I used (checkout references section) a function I found to generate the networking stuff
+The actual end game, and reason for starting this all in the first place, is to stand up the VM's and start running a POC for something. To do this, we now move onto the Vagrantfile, and Ansible provisioning playbooks.
 
-```
-# Define a nice function to sort out all the networking
-# Gets called in the main section
-def network_options(host)
-  options = {}
+This nicely sets up a baseline configuration with all the parts ready to rock and roll. Security is not the focus of this project, and everything here is bare minimum on that front. Just calling it out, for what it is!
 
-  if host.has_key?('ip')
-    options[:ip] = host['ip']
-    options[:netmask] = host['netmask'] ||= '255.255.255.0'
-  else
-    options[:type] = 'dhcp'
-  end
+## Bootstrapping
 
-  if host.has_key?('mac')
-    options[:mac] = host['mac'].gsub(/[-:]/, '')
-  end
+This take care of the SSH keys, and a few other parts, so we can pick up and start writing more playbooks to do more fun stuff.
 
-  if host.has_key?('auto_config')
-    options[:auto_config] = host['auto_config']
-  end
 
-  if host.has_key?('intnet') && host['intnet']
-    options[:virtualbox__intnet] = true
-  end
-
-  options
-end
-```
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-### Vagrant host loop
-At this point we can start a loop, to iterate over the data we set in the groupvars and build the box
-
-```
-Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-  data['host_list'].each do |host|
-    
-    set_group = '/' + host['group']
-```
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-### Vagrant configure boxes
-Then we start to set the parameters which get used to build the virtual machine
-
-```
-    config.vm.define host['name'] do |node|
-      node.vm.box = host['box']
-      node.vm.box_url = host['box_url']
-      node.vm.hostname = host['name']
-      node.vm.network :private_network, network_options(host)
-      node.ssh.insert_key = true
-      node.vm.boot_timeout = 180
-```
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-### Vagrant set memory and cpu's
-Here we set the amount of RAM and CPU's to allocate to the virtual machine:
-```
-      node.vm.provider host['provider'] do |vb|
-        vb.name = host['name']
-        vb.memory = host['mem']
-        vb.cpus = host['cpus']
-        vb.customize ['modifyvm', :id, '--groups', set_group]
-      end
- ```
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
- ### Cisco conditional loop
- As I work on both Linux hosts and network devices, I put in a conditional statement to check the host type
- 
- ```
-      if host['type'] == "cisco"
-        # do the extra interfaces here, work with the group vars
-        node.vm.network "forwarded_port", guest: 22, host: host['ansible_ssh_port'], auto_correct: true, id: "ssh"
-        node.vm.network "forwarded_port", guest: 443, host: host['cisco_api_port'], auto_correct: true
-        
-        # node.vm.network "private_network", auto_config: false, virtualbox__intnet: "vboxnet0", mac: "0800276CEE16"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network2", mac: "0800276CEE15"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network3", mac: "0800276CEE14"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network4", mac: "0800276CEE13"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network5", mac: "0800276CEE12"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network6", mac: "0800276CEE10"
-        node.vm.network "private_network", auto_config: false, virtualbox__intnet: "cisco_network7", mac: "0800276CEE09"
-        
-        node.vm.provider :virtualbox do |vb|  
-          vb.gui = true 
-          vb.customize ['modifyvm',:id,'--nicpromisc2','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc3','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc4','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc5','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc6','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc7','allow-all']
-          vb.customize ['modifyvm',:id,'--nicpromisc8','allow-all']
-        end
-      end
- ```
- 
- <div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
- ### Ansible provisioning
- Only do this if we are working on a Linux host, as its going to fail on a network device:
- 
- ```
-      # If we supplied a bootstrap variable in the data, then execute
-      # Ignore cisco, for now, only run on a linux host
-      if host['type'] == "linux"
-        node.vm.provision "ansible" do |ansible|
-          ansible.version = data['ansible_vagrant']
-          ansible.compatibility_mode = "auto"
-          ansible.playbook = host['bootstrap']
-        end
-      end
-    end
-  end
-end
-```
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>
-
-#### And finally...
-This set of instructions was build on my mac, and the VM's I tested with are the basic Ubuntu and Centos images. Hopefully there will be others out there who will be able to benefit from this work?
-
-YMMV.
-
-## References
-Thanks to these resources for helping me build out the best vagrant dev envrionment ever!
-- http://bertvv.github.io/notes-to-self/2015/10/05/one-vagrantfile-to-rule-them-all/
-- http://hakunin.com/six-ansible-practices
-- https://stackoverflow.com/questions/16708917/how-do-i-include-variables-in-my-vagrantfile
-
-<div align="right">
-    <b><a href="#top">↥ back to top</a></b>
-</div>
-<br/>

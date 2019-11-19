@@ -7,6 +7,9 @@
 
     debug: true
 
+    # Run the playbook ` ansible-playbook make_make.yml -e "title=myCool start_ip=1.1.1.20/24"  -v
+    # It is important not to include any other things around the title, otherwise it kills the paths
+
     ########################################################
     # Vars with filters and default values
     # From Extra vars on the cli 
