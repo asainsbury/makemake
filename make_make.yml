@@ -209,8 +209,12 @@
          
       tags: ['ssh_lookup']
     
-  
-
-
-
+########################################################
+# Run final sanity checks
+######################################################## 
+    - name: Change the working directory to and test the vagrant file
+      command: vagrant validate
+      args:
+        chdir: "{{project}}/vagrant/"
+      tags: ['validate']
 
